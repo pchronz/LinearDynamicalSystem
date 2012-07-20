@@ -10,12 +10,15 @@ C=ones(3);
 A=ones(3);
 Gamma=ones(3)+eye(3);
 
-# cell array for the intermediate results
+# learn the model parameters using EM
+
+# 3D matrix containing the intermediate results
 Ps=zeros(3, 3, N);
 Ks=zeros(3, 3, N);
+mus=zeros(3, N);
 Vs=zeros(3, 3, N);
 
-# initialization
+# perform computations of forward run and thus local marginals incl past observations (alpha values)
 P0=ones(3)+eye(3);
 mu0=ones(3, 1);
 for n=1:N
@@ -32,5 +35,24 @@ for n=1:N
   mus(:,n)=A*mu+Ks(:,:,n)*(x(n)-C*A*mu);
   Vs(:,:,n)=(I-Ks(:,:,n)*C)*P;
 endfor
+
+# perform computations for backward run and thus local marginals incl also future observations (gamma values)
+Js=zeros(3, 3, N)
+muhats=zeros(3, N+1)
+Vhats=zeros(3, 3, N+1)
+# XXX are the followin initializations right?
+muhats=ones(3, 1)
+Vhats(:,:,N)=eye(3)
+for n=N:-1:1
+  Js(:,:,n)=Vs(:,:,n)*A'*inv(Ps(:,:,n))
+  muhats(:, n)=mus(:, n) + Js(:,:,n)*(muhats(:,n+1)-A*mus(:,n))
+  Vhats(:,:,n)=Vs(:,:,n) + Js(:,:,n)*(Vhats(:,:,n+1)-Ps(:,:,n))*Js(:,:,n)'
+endfor
+
+# compute likelihood to monitor the progress
+
+# compute prediction on next latent variable
+
+# compute prediction on next observation
 
 
