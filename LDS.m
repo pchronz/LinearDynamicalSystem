@@ -5,36 +5,47 @@
 % TODO replace zeros with NaNs?
 % TODO adjust sizes of x and z to be independent
 % TODO document used formulas
-% TODO use scaling factors
 % TODO predict next observed
 % TODO predict next latent
+
+% maximum iterations
+MAX_ITER=150;
+
 % length of the prediction
-N=10;
+N=2;
+
+% dimensionality of the observed variables
+D_x=2;
+% dimensionality of the latent variables
+D_z=2;
 
 % observations
-X=repmat([1,2,3]',1,100);
+%X=repmat([1,2,3]',1,100);
+X=repmat([1,0],1,N/2);
+for(i=2:D_x)
+  X(i,:)=shift(X(i-1,:), 1);
+endfor
 
 % initial settings
 % TODO initialize with something meaningful such as the result of a k-means run
-Sigma=eye(3);
-C=ones(3);
-A=ones(3);
-Gamma=eye(3);
-P0=eye(3);
-mu0=ones(3, 1);
+Sigma=eye(D_x);
+C=ones(D_x, D_z)./(D_x*D_z);
+A=ones(D_z)./(D_z^2);
+Gamma=eye(D_z);
+P0=eye(D_z);
+mu0=ones(D_z, 1)./D_z;
 
 % learn the model parameters using EM
+likelihood=zeros(MAX_ITER,1);
 % TODO find a proper ending criterion
-for it=1:1
-
-  % 3D matrix containing the intermediate results
-  Ps=zeros(3, 3, N);
-  Ks=zeros(3, 3, N);
-  mus=zeros(3, N);
-  Vs=zeros(3, 3, N);
+for it=1:MAX_ITER
+  % allocate the matrices for the intermediate results
+  Ps=zeros(D_z, D_z, N);
+  Ks=zeros(D_z, D_x, N);
+  mus=zeros(D_z, N);
+  Vs=zeros(D_z, D_z, N);
 
   % perform computations of forward run and thus local marginals incl past observations (alpha values)
-  % TODO use maximized P0 and m0 according to EM
   for n=1:N
     if(n==1)
       P=P0;
@@ -47,14 +58,14 @@ for it=1:1
 
     Ks(:,:,n)=P*C'*inv(C*P*C'+Sigma);
     mus(:,n)=A*mu+Ks(:,:,n)*(X(:,n)-C*A*mu);
-    Vs(:,:,n)=(eye(length(X(:,n)))-Ks(:,:,n)*C)*P;
+    Vs(:,:,n)=(eye(D_z)-Ks(:,:,n)*C)*P;
   endfor
   Ps(:,:,N)=A*Vs(:,:,n-1)*A'+Gamma;
 
   % perform computations for backward run and thus local marginals incl also future observations (gamma values)
-  Js=zeros(3, 3, N);
-  muhats=zeros(3, N);
-  Vhats=zeros(3, 3, N);
+  Js=zeros(D_z, D_z, N);
+  muhats=zeros(D_z, N);
+  Vhats=zeros(D_z, D_z, N);
   % initializing the results for the last latent variable with the outcome of the forward pass
   muhats(:, N)=mus(:,N);
   Vhats(:,:,N)=Vs(:,:,N);
@@ -71,43 +82,42 @@ for it=1:1
   mu0_new=expectZn(muhats(:,n));
 
   % P0_new
-  P0_new=expectZnZn(Vhats(:,:,1),muhats(:,:,1))-expectZn(muhats(:,1))*expectZn(muhats(:,1))';
+  P0_new=expectZnZn(Vhats(:,:,1),muhats(:,1))-expectZn(muhats(:,1))*expectZn(muhats(:,1))';
 
   % A_new
   % first sum over the expectations
-  exp1=0;
+  exp1=zeros(D_z);
   for n=2:N
-    exp1=exp1+expectZnZnm1(Vhats(:,:,n), Js(:,:,n-1), muhats(:,n), muhats(:,n-1));
+    exp1=exp1+expectZnZnm1(Vhats(:,:,n),Js(:,:,n-1),muhats(:,n),muhats(:,n-1));
   endfor
-  exp2=0;
-  for(n=2:N)
+  exp2=zeros(D_z);
+  for n=2:N
     exp2=exp2+expectZnZn(Vhats(:,:,n-1),muhats(:,n-1));
   endfor
-  A_new=exp1+inv(exp2);
+  A_new=exp1*inv(exp2);
 
   % Gamma_new
-  G=zeros(length(X(:,1)));
+  G=zeros(D_z);
   for n=2:N
-    % TODO verify that the calculation of E[z_n-1, z_n] is correct
-    G=G+expectZnZn(Vhats(:,:,n),muhats(:,n))-A_new*expectZnZnm1(Vhats(:,:,n-1),Js(:,:,n),muhats(:,n-1),muhats(:,n))-expectZnZnm1(Vhats(:,:,n),Js(:,:,n-1),muhats(:,n),muhats(:,n-1))+A_new*expectZnZn(Vhats(:,:,n-1),muhats(:,n-1))*A_new';
+    G=G+expectZnZn(Vhats(:,:,n),muhats(:,n))-A_new*expectZnm1Zn(Vhats(:,:,n),Js(:,:,n-1),muhats(:,n),muhats(:,n-1))-expectZnZnm1(Vhats(:,:,n),Js(:,:,n-1),muhats(:,n),muhats(:,n-1))*A_new'+A_new*expectZnZn(Vhats(:,:,n-1),muhats(:,n-1))*A_new';
   endfor
   Gamma_new=1/(N-1)*G;
 
   % C_new
-  exp1=0;
+  exp1=zeros(D_x, D_z);
   for n=1:N
     exp1=exp1+X(:,n)*expectZn(muhats(:,n))';
   endfor
-  exp2=0;
+  exp2=zeros(D_z);
   for n=1:N
     exp2=exp2+expectZnZn(Vhats(:,:,n), muhats(:,n));
   endfor
   C_new=exp1*inv(exp2);
 
   % Sigma_new
-  S=zeros(length(X(:,1)));
+  S=zeros(D_x);
   for n=1:N
-    S=S+X(:,n)*X(:,n)'-C_new'*expectZn(muhats(:,n))*X(:,n)'-X(:,n)*expectZn(muhats(:,n))'*C_new+C_new'*expectZnZn(Vhats(:,:,n),muhats(:,n))*C_new;
+    S=S+X(:,n)*X(:,n)'-C_new*expectZn(muhats(:,n))*X(:,n)'-X(:,n)*expectZn(muhats(:,n))'*C_new'+C_new*expectZnZn(Vhats(:,:,n),muhats(:,n))*C_new';
   endfor
   Sigma_new=1/N.*S;
 
@@ -119,32 +129,33 @@ for it=1:1
   C=C_new;
   Sigma=Sigma_new;
 
-  % compute likelihood to monitor the progress
-  % using the scaling factors to compute the likelihood according to (13.63): p(X)=c_1*c_2*...*c_N
-  mu_c1=C*mu0;
-  Sigma_c1=C*P0*C'+Sigma;
-  D=length(X(:,1));
-  likelihood=(2*pi)^(-D/2) * (1/sqrt(det(Sigma_c1))) * exp(-.5*(X(:,1)-mu_c1)'*inv(Sigma_c1)*(X(:,1)-mu_c1));
-  for n=2:N
-    % first compute the mean and covariance for cn
-    mu_cn=C*A*mus(:,n-1);
-    Sigma_cn=C*Ps(:,:,n-1)*C'+Sigma;
+  %% compute likelihood to monitor the progress
+  %% using the scaling factors to compute the likelihood according to (13.63): p(X)=c_1*c_2*...*c_N
+  %mu_c1=C*mu0;
+  %Sigma_c1=C*P0*C'+Sigma;
+  %likelihood=(2*pi)^(-D_x/2) * (1/sqrt(det(Sigma_c1))) * exp(-.5*(X(:,1)-mu_c1)'*inv(Sigma_c1)*(X(:,1)-mu_c1));
+  %for n=2:N
+  %  % first compute the mean and covariance for cn
+  %  mu_cn=C*A*mus(:,n-1);
+  %  Sigma_cn=C*Ps(:,:,n-1)*C'+Sigma;
 
-    % compute the probability for our observation from cn's distribution
-    p_cn = (2*pi)^(-D/2) * (1/sqrt(det(Sigma_cn))) * exp(-.5*(X(:,n)-mu_cn)'*inv(Sigma_cn)*(X(:,n)-mu_cn));
+  %  % compute the probability for our observation from cn's distribution
+  %  p_cn = (2*pi)^(-D_x/2) * (1/sqrt(det(Sigma_cn))) * exp(-.5*(X(:,n)-mu_cn)'*inv(Sigma_cn)*(X(:,n)-mu_cn));
 
-    % multiply by previous result
-    likelihood=likelihood*p_cn;
-  endfor
+  %  % multiply by previous result
+  %  likelihood=likelihood*p_cn;
+  %endfor
 
-  % print out the likelihood
-  likelihood
+  %% save the likelihood for plotting
+  %likelihoods(it)=likelihood;
 
 endfor
+
+% plot the likelihoods
+plot(likelihoods)
 
 
 % compute prediction on next latent variable
 
 % compute prediction on next observation
-
 
