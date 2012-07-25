@@ -8,20 +8,24 @@
 % TODO predict next observed
 % TODO predict next latent
 
+% package dependencies
+% statistics package for the MV normal PDF
+pkg load statistics
+
 % maximum iterations
-MAX_ITER=150;
+MAX_ITER=5000;
 
 % length of the prediction
-N=2;
+N=200;
 
 % dimensionality of the observed variables
-D_x=2;
+D_x=20;
 % dimensionality of the latent variables
-D_z=2;
+D_z=10;
 
 % observations
-%X=repmat([1,2,3]',1,100);
-X=repmat([1,0],1,N/2);
+X=randn(D_x, N);
+X=sin(linspace(0,2,N)*pi*1);
 for(i=2:D_x)
   X(i,:)=shift(X(i-1,:), 1);
 endfor
@@ -77,6 +81,27 @@ for it=1:MAX_ITER
     Vhats(:,:,n)=Vs(:,:,n) + Js(:,:,n)*(Vhats(:,:,n+1)-Ps(:,:,n))*Js(:,:,n)';
   endfor
 
+  % compute log-likelihood to monitor the progress
+  % using the scaling factors to compute the likelihood according to (13.63): p(X)=c_1*c_2*...*c_N
+  mu_c1=C*mu0;
+  Sigma_c1=C*P0*C'+Sigma;
+  likelihood=mvnpdf(X(:,1)', mu_c1', Sigma_c1);
+  for n=2:N
+    % first compute the mean and covariance for cn
+    mu_cn=C*A*mus(:,n-1);
+    Sigma_cn=C*Ps(:,:,n-1)*C'+Sigma;
+
+    % compute the probability for our observation from cn's distribution
+    p_cn=mvnpdf(X(:,n)', mu_cn', Sigma_cn);
+
+    % multiply by previous result
+    likelihood=likelihood+log(p_cn);
+  endfor
+
+  % save the likelihood for plotting
+  likelihoods(it)=likelihood;
+
+
   % update the parameters 
   % mu0_new
   mu0_new=expectZn(muhats(:,n));
@@ -128,27 +153,6 @@ for it=1:MAX_ITER
   Gamma=Gamma_new;
   C=C_new;
   Sigma=Sigma_new;
-
-  %% compute likelihood to monitor the progress
-  %% using the scaling factors to compute the likelihood according to (13.63): p(X)=c_1*c_2*...*c_N
-  %mu_c1=C*mu0;
-  %Sigma_c1=C*P0*C'+Sigma;
-  %likelihood=(2*pi)^(-D_x/2) * (1/sqrt(det(Sigma_c1))) * exp(-.5*(X(:,1)-mu_c1)'*inv(Sigma_c1)*(X(:,1)-mu_c1));
-  %for n=2:N
-  %  % first compute the mean and covariance for cn
-  %  mu_cn=C*A*mus(:,n-1);
-  %  Sigma_cn=C*Ps(:,:,n-1)*C'+Sigma;
-
-  %  % compute the probability for our observation from cn's distribution
-  %  p_cn = (2*pi)^(-D_x/2) * (1/sqrt(det(Sigma_cn))) * exp(-.5*(X(:,n)-mu_cn)'*inv(Sigma_cn)*(X(:,n)-mu_cn));
-
-  %  % multiply by previous result
-  %  likelihood=likelihood*p_cn;
-  %endfor
-
-  %% save the likelihood for plotting
-  %likelihoods(it)=likelihood;
-
 endfor
 
 % plot the likelihoods
