@@ -1,34 +1,36 @@
 % TODO incorporate multiple independent sequences for learning
-% TODO modularize into functions
-% TODO parallelize
 % TODO optimize: how to? cholesky decomposition for inverse of PD matrices?
-% TODO replace zeros with NaNs?
-% TODO adjust sizes of x and z to be independent
+% TODO parallelize
 % TODO document used formulas
-% TODO predict next observed
-% TODO predict next latent
+% TODO automatic testing via assertions and test cases
+% TODO detect singularities and abort
 
 % package dependencies
 % statistics package for the MV normal PDF
 pkg load statistics
 
+% clear all current variables
+clear
+
 % maximum iterations
-MAX_ITER=5000;
+MAX_ITER=1500;
 
 % length of the prediction
-N=200;
+N=100;
 
 % dimensionality of the observed variables
-D_x=20;
+D_x=1;
 % dimensionality of the latent variables
-D_z=10;
+D_z=5;
 
 % observations
 X=randn(D_x, N);
-X=sin(linspace(0,2,N)*pi*1);
-for(i=2:D_x)
-  X(i,:)=shift(X(i-1,:), 1);
-endfor
+%X=sin(linspace(0,2,N)*pi*1);
+%for(i=2:D_x)
+%  X(i,:)=shift(X(i-1,:), 1);
+%endfor
+%X=repmat([1,0], 1, N/2);
+%X=repmat(linspace(0,1,N), D_x, 1);
 
 % initial settings
 % TODO initialize with something meaningful such as the result of a k-means run
@@ -45,26 +47,19 @@ likelihood=zeros(MAX_ITER,1);
 for it=1:MAX_ITER
   % allocate the matrices for the intermediate results
   Ps=zeros(D_z, D_z, N);
-  Ks=zeros(D_z, D_x, N);
   mus=zeros(D_z, N);
   Vs=zeros(D_z, D_z, N);
 
   % perform computations of forward run and thus local marginals incl past observations (alpha values)
-  for n=1:N
-    if(n==1)
-      P=P0;
-      mu=mu0;
-    else
-      Ps(:,:,n-1)=A*Vs(:,:,n-1)*A'+Gamma;
-      P=Ps(:,:,n-1);
-      mu=mus(:,n-1);
-    endif
-
-    Ks(:,:,n)=P*C'*inv(C*P*C'+Sigma);
-    mus(:,n)=A*mu+Ks(:,:,n)*(X(:,n)-C*A*mu);
-    Vs(:,:,n)=(eye(D_z)-Ks(:,:,n)*C)*P;
+  % compute the first step with the given parameters (13.94-13.97)
+  K=P0*C'*inv(C*P0*C'+Sigma);
+  mus(:,1)=mu0+K*(X(:,1)-C*mu0);
+  Vs(:,:,1)=(eye(D_z)-K*C)*P0;
+  Ps(:,:,1)=A*Vs(:,:,1)*A'+Gamma;
+  % now for each step use the corresponding recursive formulas (13.88-13.91)
+  for n=2:N
+    [mus(:,n), Vs(:,:,n), Ps(:,:,n)] = computeForwardRecursion(X(:,n), A, Gamma, C, Sigma, Vs(:,:,n-1), mus(:,n-1), Ps(:,:,n-1));
   endfor
-  Ps(:,:,N)=A*Vs(:,:,n-1)*A'+Gamma;
 
   % perform computations for backward run and thus local marginals incl also future observations (gamma values)
   Js=zeros(D_z, D_z, N);
@@ -76,90 +71,47 @@ for it=1:MAX_ITER
   Js(:,:,N)=Vs(:,:,N)*A'*inv(Ps(:,:,N));
   % starting at N-1 since gamma(z_N)=alpha(z_N) and thus the values for N are being initialized with the results for the last latent variable from the forward run
   for n=N-1:-1:1
-    Js(:,:,n)=Vs(:,:,n)*A'*inv(Ps(:,:,n));
-    muhats(:, n)=mus(:, n) + Js(:,:,n)*(muhats(:,n+1)-A*mus(:,n));
-    Vhats(:,:,n)=Vs(:,:,n) + Js(:,:,n)*(Vhats(:,:,n+1)-Ps(:,:,n))*Js(:,:,n)';
+    [muhats(:,n), Vhats(:,:,n), Js(:,:,n)]=computeBackwardRecursion(mus(:,n), Vs(:,:,n), muhats(:,n+1), Vhats(:,:,n+1), A, Ps(:,:,n));
   endfor
 
   % compute log-likelihood to monitor the progress
-  % using the scaling factors to compute the likelihood according to (13.63): p(X)=c_1*c_2*...*c_N
-  mu_c1=C*mu0;
-  Sigma_c1=C*P0*C'+Sigma;
-  likelihood=mvnpdf(X(:,1)', mu_c1', Sigma_c1);
-  for n=2:N
-    % first compute the mean and covariance for cn
-    mu_cn=C*A*mus(:,n-1);
-    Sigma_cn=C*Ps(:,:,n-1)*C'+Sigma;
-
-    % compute the probability for our observation from cn's distribution
-    p_cn=mvnpdf(X(:,n)', mu_cn', Sigma_cn);
-
-    % multiply by previous result
-    likelihood=likelihood+log(p_cn);
-  endfor
-
   % save the likelihood for plotting
-  likelihoods(it)=likelihood;
-
+  likelihoods(it)=computeLogLikelihood(mu0, P0, C, Sigma, A, mus, Ps, X);
 
   % update the parameters 
-  % mu0_new
-  mu0_new=expectZn(muhats(:,n));
-
-  % P0_new
-  P0_new=expectZnZn(Vhats(:,:,1),muhats(:,1))-expectZn(muhats(:,1))*expectZn(muhats(:,1))';
-
-  % A_new
-  % first sum over the expectations
-  exp1=zeros(D_z);
-  for n=2:N
-    exp1=exp1+expectZnZnm1(Vhats(:,:,n),Js(:,:,n-1),muhats(:,n),muhats(:,n-1));
-  endfor
-  exp2=zeros(D_z);
-  for n=2:N
-    exp2=exp2+expectZnZn(Vhats(:,:,n-1),muhats(:,n-1));
-  endfor
-  A_new=exp1*inv(exp2);
-
-  % Gamma_new
-  G=zeros(D_z);
-  for n=2:N
-    G=G+expectZnZn(Vhats(:,:,n),muhats(:,n))-A_new*expectZnm1Zn(Vhats(:,:,n),Js(:,:,n-1),muhats(:,n),muhats(:,n-1))-expectZnZnm1(Vhats(:,:,n),Js(:,:,n-1),muhats(:,n),muhats(:,n-1))*A_new'+A_new*expectZnZn(Vhats(:,:,n-1),muhats(:,n-1))*A_new';
-  endfor
-  Gamma_new=1/(N-1)*G;
-
-  % C_new
-  exp1=zeros(D_x, D_z);
-  for n=1:N
-    exp1=exp1+X(:,n)*expectZn(muhats(:,n))';
-  endfor
-  exp2=zeros(D_z);
-  for n=1:N
-    exp2=exp2+expectZnZn(Vhats(:,:,n), muhats(:,n));
-  endfor
-  C_new=exp1*inv(exp2);
-
-  % Sigma_new
-  S=zeros(D_x);
-  for n=1:N
-    S=S+X(:,n)*X(:,n)'-C_new*expectZn(muhats(:,n))*X(:,n)'-X(:,n)*expectZn(muhats(:,n))'*C_new'+C_new*expectZnZn(Vhats(:,:,n),muhats(:,n))*C_new';
-  endfor
-  Sigma_new=1/N.*S;
-
-  % assign the updated parameters
-  mu0=mu0_new;
-  P0=P0_new;
-  A=A_new;
-  Gamma=Gamma_new;
-  C=C_new;
-  Sigma=Sigma_new;
+  [mu0, P0, A, Gamma, C, Sigma]=updateParameters(muhats, Vhats, Js, X);
 endfor
 
 % plot the likelihoods
+subplot(2,2,1)
 plot(likelihoods)
 
+% plot the data
+subplot(2,2,2)
+plot(X)
 
-% compute prediction on next latent variable
+if(D_x == 1)
+  % TODO compute the proper probability distribution instead of just using the mean?
+  % compute and plot predictions
+  % predict the next latent variable given current observations
+  % extend the required matrices
+  N_pred=100;
+  X=[X,zeros(D_x,N_pred)];
+  mu_preds=zeros(D_z, N_pred);
+  % compute the mean of the next latent variable
+  mu_preds(:,1)=A*mus(:,N);
+  % compute the most probable observation
+  X(:,N+1)=C*mu_preds(:,1);
+  for i=2:N_pred
+    % compute the mean of the next latent variable
+    mu_preds(:,i)=A*mu_preds(:,i-1);
+    % compute the most probable observation
+    X(:,N+i)=C*mu_preds(:,i);
+  endfor
+  subplot(2,2,3)
+  plot(X)
+endif
 
-% compute prediction on next observation
+
+
 
