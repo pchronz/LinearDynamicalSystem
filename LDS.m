@@ -1,9 +1,8 @@
 % TODO incorporate multiple independent sequences for learning
-% TODO optimize: how to? cholesky decomposition for inverse of PD matrices?
 % TODO parallelize
 % TODO document used formulas
 % TODO automatic testing via assertions and test cases
-% TODO detect singularities and abort
+% TODO ending criterion
 
 % package dependencies
 % statistics package for the MV normal PDF
@@ -13,24 +12,25 @@ pkg load statistics
 clear
 
 % maximum iterations
-MAX_ITER=1500;
+MAX_ITER=1200;
 
-% length of the prediction
+% length of the learned sequence
 N=100;
 
 % dimensionality of the observed variables
 D_x=1;
 % dimensionality of the latent variables
-D_z=5;
+D_z=2;
 
 % observations
-X=randn(D_x, N);
-%X=sin(linspace(0,2,N)*pi*1);
+%X=randn(D_x, N);
+%X=sin(linspace(0,1,N)*pi*1);
 %for(i=2:D_x)
 %  X(i,:)=shift(X(i-1,:), 1);
 %endfor
 %X=repmat([1,0], 1, N/2);
 %X=repmat(linspace(0,1,N), D_x, 1);
+X=repmat(linspace(0,1,N).^2, D_x, 1);
 
 % initial settings
 % TODO initialize with something meaningful such as the result of a k-means run
@@ -44,43 +44,47 @@ mu0=ones(D_z, 1)./D_z;
 % learn the model parameters using EM
 likelihood=zeros(MAX_ITER,1);
 % TODO find a proper ending criterion
-for it=1:MAX_ITER
-  % allocate the matrices for the intermediate results
-  Ps=zeros(D_z, D_z, N);
-  mus=zeros(D_z, N);
-  Vs=zeros(D_z, D_z, N);
+try
+  for it=1:MAX_ITER
+    % allocate the matrices for the intermediate results
+    Ps=zeros(D_z, D_z, N);
+    mus=zeros(D_z, N);
+    Vs=zeros(D_z, D_z, N);
 
-  % perform computations of forward run and thus local marginals incl past observations (alpha values)
-  % compute the first step with the given parameters (13.94-13.97)
-  K=P0*C'*inv(C*P0*C'+Sigma);
-  mus(:,1)=mu0+K*(X(:,1)-C*mu0);
-  Vs(:,:,1)=(eye(D_z)-K*C)*P0;
-  Ps(:,:,1)=A*Vs(:,:,1)*A'+Gamma;
-  % now for each step use the corresponding recursive formulas (13.88-13.91)
-  for n=2:N
-    [mus(:,n), Vs(:,:,n), Ps(:,:,n)] = computeForwardRecursion(X(:,n), A, Gamma, C, Sigma, Vs(:,:,n-1), mus(:,n-1), Ps(:,:,n-1));
+    % perform computations of forward run and thus local marginals incl past observations (alpha values)
+    % compute the first step with the given parameters (13.94-13.97)
+    K=(P0*C')/(C*P0*C'+Sigma);
+    mus(:,1)=mu0+K*(X(:,1)-C*mu0);
+    Vs(:,:,1)=(eye(D_z)-K*C)*P0;
+    Ps(:,:,1)=A*Vs(:,:,1)*A'+Gamma;
+    % now for each step use the corresponding recursive formulas (13.88-13.91)
+    for n=2:N
+      [mus(:,n), Vs(:,:,n), Ps(:,:,n)] = computeForwardRecursion(X(:,n), A, Gamma, C, Sigma, Vs(:,:,n-1), mus(:,n-1), Ps(:,:,n-1));
+    endfor
+
+    % perform computations for backward run and thus local marginals incl also future observations (gamma values)
+    Js=zeros(D_z, D_z, N);
+    muhats=zeros(D_z, N);
+    Vhats=zeros(D_z, D_z, N);
+    % initializing the results for the last latent variable with the outcome of the forward pass
+    muhats(:, N)=mus(:,N);
+    Vhats(:,:,N)=Vs(:,:,N);
+    Js(:,:,N)=(Vs(:,:,N)*A')/Ps(:,:,N);
+    % starting at N-1 since gamma(z_N)=alpha(z_N) and thus the values for N are being initialized with the results for the last latent variable from the forward run
+    for n=N-1:-1:1
+      [muhats(:,n), Vhats(:,:,n), Js(:,:,n)]=computeBackwardRecursion(mus(:,n), Vs(:,:,n), muhats(:,n+1), Vhats(:,:,n+1), A, Ps(:,:,n));
+    endfor
+
+    % compute log-likelihood to monitor the progress
+    % save the likelihood for plotting
+    likelihoods(it)=computeLogLikelihood(mu0, P0, C, Sigma, A, mus, Ps, X);
+
+    % update the parameters 
+    [mu0, P0, A, Gamma, C, Sigma]=updateParameters(muhats, Vhats, Js, X);
   endfor
-
-  % perform computations for backward run and thus local marginals incl also future observations (gamma values)
-  Js=zeros(D_z, D_z, N);
-  muhats=zeros(D_z, N);
-  Vhats=zeros(D_z, D_z, N);
-  % initializing the results for the last latent variable with the outcome of the forward pass
-  muhats(:, N)=mus(:,N);
-  Vhats(:,:,N)=Vs(:,:,N);
-  Js(:,:,N)=Vs(:,:,N)*A'*inv(Ps(:,:,N));
-  % starting at N-1 since gamma(z_N)=alpha(z_N) and thus the values for N are being initialized with the results for the last latent variable from the forward run
-  for n=N-1:-1:1
-    [muhats(:,n), Vhats(:,:,n), Js(:,:,n)]=computeBackwardRecursion(mus(:,n), Vs(:,:,n), muhats(:,n+1), Vhats(:,:,n+1), A, Ps(:,:,n));
-  endfor
-
-  % compute log-likelihood to monitor the progress
-  % save the likelihood for plotting
-  likelihoods(it)=computeLogLikelihood(mu0, P0, C, Sigma, A, mus, Ps, X);
-
-  % update the parameters 
-  [mu0, P0, A, Gamma, C, Sigma]=updateParameters(muhats, Vhats, Js, X);
-endfor
+catch
+  disp(strcat("warning: EM algorithm ended due to an error (singularity?) after ", mat2str(it), " steps"))
+end_try_catch
 
 % plot the likelihoods
 subplot(2,2,1)
@@ -110,6 +114,11 @@ if(D_x == 1)
   endfor
   subplot(2,2,3)
   plot(X)
+endif
+
+if(D_z == 1)
+  subplot(2,2,4)
+  plot([muhats, mu_preds])
 endif
 
 

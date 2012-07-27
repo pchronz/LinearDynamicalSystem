@@ -19,7 +19,7 @@ function [mu0_new, P0_new, A_new, Gamma_new, C_new, Sigma_new] = updateParameter
   for n=2:N
     exp2=exp2+expectZnZn(Vhats(:,:,n-1),muhats(:,n-1));
   endfor
-  A_new=exp1*inv(exp2);
+  A_new=exp1/exp2;
 
   % Gamma_new
   G=zeros(D_z);
@@ -37,7 +37,7 @@ function [mu0_new, P0_new, A_new, Gamma_new, C_new, Sigma_new] = updateParameter
   for n=1:N
     exp2=exp2+expectZnZn(Vhats(:,:,n), muhats(:,n));
   endfor
-  C_new=exp1*inv(exp2);
+  C_new=exp1/exp2;
 
   % Sigma_new
   S=zeros(D_x);
