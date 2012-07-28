@@ -2,7 +2,6 @@
 % TODO parallelize
 % TODO document used formulas
 % TODO automatic testing via assertions and test cases
-% TODO ending criterion
 
 % package dependencies
 % statistics package for the MV normal PDF
@@ -20,7 +19,7 @@ N=100;
 % dimensionality of the observed variables
 D_x=1;
 % dimensionality of the latent variables
-D_z=2;
+D_z=3;
 
 % observations
 %X=randn(D_x, N);
@@ -42,38 +41,16 @@ P0=eye(D_z);
 mu0=ones(D_z, 1)./D_z;
 
 % learn the model parameters using EM
-likelihood=zeros(MAX_ITER,1);
-% TODO find a proper ending criterion
+likelihoods=zeros(MAX_ITER,1);
+deltaLikelihoods=1000;
 try
-  for it=1:MAX_ITER
-    % allocate the matrices for the intermediate results
-    Ps=zeros(D_z, D_z, N);
-    mus=zeros(D_z, N);
-    Vs=zeros(D_z, D_z, N);
+  it=1;
+  while it<MAX_ITER && deltaLikelihoods > 0.002
+    % forward recursions (alpha values)
+    [mus, Vs, Ps]=computeForwardRecursions(P0, C, Sigma, mu0, X, A, Gamma);
 
-    % perform computations of forward run and thus local marginals incl past observations (alpha values)
-    % compute the first step with the given parameters (13.94-13.97)
-    K=(P0*C')/(C*P0*C'+Sigma);
-    mus(:,1)=mu0+K*(X(:,1)-C*mu0);
-    Vs(:,:,1)=(eye(D_z)-K*C)*P0;
-    Ps(:,:,1)=A*Vs(:,:,1)*A'+Gamma;
-    % now for each step use the corresponding recursive formulas (13.88-13.91)
-    for n=2:N
-      [mus(:,n), Vs(:,:,n), Ps(:,:,n)] = computeForwardRecursion(X(:,n), A, Gamma, C, Sigma, Vs(:,:,n-1), mus(:,n-1), Ps(:,:,n-1));
-    endfor
-
-    % perform computations for backward run and thus local marginals incl also future observations (gamma values)
-    Js=zeros(D_z, D_z, N);
-    muhats=zeros(D_z, N);
-    Vhats=zeros(D_z, D_z, N);
-    % initializing the results for the last latent variable with the outcome of the forward pass
-    muhats(:, N)=mus(:,N);
-    Vhats(:,:,N)=Vs(:,:,N);
-    Js(:,:,N)=(Vs(:,:,N)*A')/Ps(:,:,N);
-    % starting at N-1 since gamma(z_N)=alpha(z_N) and thus the values for N are being initialized with the results for the last latent variable from the forward run
-    for n=N-1:-1:1
-      [muhats(:,n), Vhats(:,:,n), Js(:,:,n)]=computeBackwardRecursion(mus(:,n), Vs(:,:,n), muhats(:,n+1), Vhats(:,:,n+1), A, Ps(:,:,n));
-    endfor
+    % backward recursions (gamma values)
+    [muhats, Vhats, Js]=computeBackwardRecursions(mus, Vs, Ps, A);
 
     % compute log-likelihood to monitor the progress
     % save the likelihood for plotting
@@ -81,9 +58,16 @@ try
 
     % update the parameters 
     [mu0, P0, A, Gamma, C, Sigma]=updateParameters(muhats, Vhats, Js, X);
-  endfor
+
+    % ending criterions
+    if(it>1)
+      deltaLikelihoods=(likelihoods(it)-likelihoods(it-1))/abs(likelihoods(it));
+    endif
+    it=it+1;
+  endwhile
 catch
   disp(strcat("warning: EM algorithm ended due to an error (singularity?) after ", mat2str(it), " steps"))
+  disp(strcat("relative increase in the likelihood: ", mat2str(deltaLikelihoods)))
 end_try_catch
 
 % plot the likelihoods
@@ -95,11 +79,13 @@ subplot(2,2,2)
 plot(X)
 
 if(D_x == 1)
-  % TODO compute the proper probability distribution instead of just using the mean?
+  % do forward recursion until the last observation
+  [mus, Vs, Ps]=computeForwardRecursions(P0, C, Sigma, mu0, X, A, Gamma);
+
   % compute and plot predictions
   % predict the next latent variable given current observations
   % extend the required matrices
-  N_pred=100;
+  N_pred=1000;
   X=[X,zeros(D_x,N_pred)];
   mu_preds=zeros(D_z, N_pred);
   % compute the mean of the next latent variable
