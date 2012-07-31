@@ -18,3 +18,4 @@ function [mus, Vs, Ps] = computeForwardRecursions(P0, C, Sigma, mu0, X, A, Gamma
     [mus(:,n), Vs(:,:,n), Ps(:,:,n)] = computeForwardRecursion(X(:,n), A, Gamma, C, Sigma, Vs(:,:,n-1), mus(:,n-1), Ps(:,:,n-1));
   endfor
 endfunction
+
