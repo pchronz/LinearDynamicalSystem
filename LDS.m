@@ -19,17 +19,17 @@ N=100;
 % dimensionality of the observed variables
 D_x=1;
 % dimensionality of the latent variables
-D_z=3;
+D_z=1;
 
 % observations
 %X=randn(D_x, N);
-%X=sin(linspace(0,1,N)*pi*1);
-%for(i=2:D_x)
-%  X(i,:)=shift(X(i-1,:), 1);
-%endfor
+X=sin(linspace(0,1,N)*pi*1);
+for(i=2:D_x)
+  X(i,:)=shift(X(i-1,:), 1);
+endfor
 %X=repmat([1,0], 1, N/2);
 %X=repmat(linspace(0,1,N), D_x, 1);
-X=repmat(linspace(0,1,N).^2, D_x, 1);
+%X=repmat(linspace(0,1,N).^2, D_x, 1);
 
 % initial settings
 % TODO initialize with something meaningful such as the result of a k-means run
@@ -85,7 +85,7 @@ if(D_x == 1)
   % compute and plot predictions
   % predict the next latent variable given current observations
   % extend the required matrices
-  N_pred=1000;
+  N_pred=100;
   X=[X,zeros(D_x,N_pred)];
   mu_preds=zeros(D_z, N_pred);
   % compute the mean of the next latent variable
