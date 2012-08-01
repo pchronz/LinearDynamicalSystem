@@ -1,0 +1,10 @@
+Name: lds
+Version: 0.1.0
+Date: 2012-01-08
+Author: Peter A. Chronz peter.chronz@gmail.com
+Maintainer: Peter A. Chronz
+Title: Linear Dynamical Systems
+Description: This packages allows to learn linear dynamical systems, and make predictions based on those.
+Categories: machinelearning
+Depends: statistics (>= 1.0.0)
+
