@@ -20,7 +20,7 @@ D_z=2;
 %X=randn(D_x, N);
 
 for r=1:R
-  X(:,:,r)=sin((linspace(0,2,N))*pi*1)+0.8*randn(D_x,N);
+  X(:,:,r)=sin((linspace(0,2,N))*pi*1)+0.6*randn(D_x,N);
   for i=2:D_x
     X(i,:,r)=shift(X(i-1,:,r), 1);
   endfor
