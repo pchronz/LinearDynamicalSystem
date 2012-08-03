@@ -93,6 +93,8 @@ function [params, muhats, likelihoods] = learnLDS(X, D_z, maxIterations, minImpr
        deltaLikelihoods=(likelihoods(it)-likelihoods(it-1))/abs(likelihoods(it));
      endif
 
+     % output the current iteration
+     disp(strcat("Just finished iteration: ", mat2str(it)))
      it=it+1;
    endwhile
   catch
