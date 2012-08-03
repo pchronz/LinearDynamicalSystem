@@ -13,7 +13,7 @@ clear
 
 % observations
 N=50;
-R=500;
+R=250;
 D_x=1;
 D_z=2;
 
@@ -32,7 +32,7 @@ endfor
 %X=repmat(linspace(0,1,N), D_x, 1);
 %X=repmat(linspace(0,1,N).^2, D_x, 1);
 
-[lds, muhats, likelihoods]=learnLDS(X, D_z, 400, 0.000001);
+[lds, muhats, likelihoods]=learnLDS(X, D_z, 400, 0.2);
 
 % plot the likelihoods
 subplot(2,2,1)
