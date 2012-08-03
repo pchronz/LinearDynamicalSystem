@@ -1,7 +1,8 @@
 % TODO profile
 % TODO initialize with something meaningful such as the result of a k-means run
 % TODO particle filters
-% TODO abort when encountering multiple negative gradients in likelihoods
+% TODO compare to other implementations
+% TODO simulate covariance in prediction
 
 % package dependencies
 % statistics package for the MV normal PDF
@@ -12,17 +13,17 @@ clear
 
 % observations
 N=50;
-R=3;
+R=500;
 D_x=1;
-D_z=5;
+D_z=2;
+
 %X=randn(D_x, N);
 
-X(:,:,1)=sin(linspace(0,1,N)*pi*1);
-for i=2:D_x
-  X(i,:,1)=shift(X(i-1,:,1), 1);
-endfor
-for r=2:R
-  X(:,:,r)=X(:,:,r-1);
+for r=1:R
+  X(:,:,r)=sin((linspace(0,2,N))*pi*1)+0.8*randn(D_x,N);
+  for i=2:D_x
+    X(i,:,r)=shift(X(i-1,:,r), 1);
+  endfor
 endfor
 
 %X(:,:,1)=repmat([1,0], 1, N/2);
@@ -31,7 +32,7 @@ endfor
 %X=repmat(linspace(0,1,N), D_x, 1);
 %X=repmat(linspace(0,1,N).^2, D_x, 1);
 
-[lds, muhats, likelihoods]=learnLDS(X, D_z, 150, 0.001);
+[lds, muhats, likelihoods]=learnLDS(X, D_z, 400, 0.000001);
 
 % plot the likelihoods
 subplot(2,2,1)
@@ -42,16 +43,13 @@ if(D_x == 1)
   subplot(2,2,2)
   plot(X(:,:,1))
 
-  if(R>1)
-    % plot the second sequence
-    subplot(2,2,3)
-    plot(X(:,:,2))
-  endif
+  [X_pred, Z_pred]=predictLDS(lds, X(:,:,1), N);
 
-  X_pred=predictLDS(lds, X(:,:,1), 100);
+  subplot(2,2,3)
+  plot([X(:,:,1), X_pred])
 
   subplot(2,2,4)
-  plot([X(:,:,1), X_pred])
+  plot(Z_pred')
 endif
 
 
