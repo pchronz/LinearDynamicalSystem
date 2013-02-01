@@ -15,6 +15,7 @@
 % likelihoods - the values of the log-likelihood for each step of the EM algorithm. This provides information on the progress of the optimization.
 
 function [params, muhats, likelihoods] = learnLDS(X, D_z, maxIterations, minImprovement)
+  % TODO check for supplied arguments
   % return the model parameters for the LDS
   % also return muhats, since these represent the most probable sequence of latent variables
 

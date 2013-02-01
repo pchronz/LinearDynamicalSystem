@@ -27,9 +27,9 @@ function [mu0_new, P0_new, A_new, Gamma_new, C_new, Sigma_new] = updateParameter
   % P0_new, (13.111) extended for multiple sequences similar to Ex. 13.12
   P0_new=zeros(D_z, D_z);
   for r=1:R
-    P0_new=P0_new+expectZnZn(Vhats(:,:,1,r),muhats(:,1,r))-expectZn(muhats(:,1,r))*expectZn(muhats(:,1,r))';
+    P0_new=P0_new+expectZnZn(Vhats(:,:,1,r),muhats(:,1,r));
   endfor
-  P0_new=(1/R).*P0_new;
+  P0_new=(1/R).*P0_new-mu0_new*mu0_new';
 
   % A_new, (13.113) extended for multiple sequences similar to Ex. 13.12
   % first sum over the expectations

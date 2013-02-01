@@ -8,7 +8,8 @@
 % Outputs
 % X_preds - DxN_pred matrix containing the predictions x_n as column vectors for each prediction step.
 
-function X_pred = predictLDS(lds, X, N_pred)
+function [X_pred, Z_pred] = predictLDS(lds, X, N_pred)
+  % TODO check for supplied arguments
   % load the statistics package for the MV normal PDF
   pkg load statistics
 
@@ -27,17 +28,27 @@ function X_pred = predictLDS(lds, X, N_pred)
   % basically just choose the most probable value (the mean) and then transform it
   % given (13.75) and (13.76) to obtain the next mean values
   X_pred=zeros(D_x, N_pred);
-  % extend the required matrices
+  % the predicted mean values
   mu_preds=zeros(D_z, N_pred);
+  % the predicted covariance matrices
+  U_preds=zeros(D_z, D_z, N_pred);
   % compute the mean of the next latent variable
   mu_preds(:,1)=lds.A*mus(:,end);
-  % compute the most probable observation
-  X_pred(:,1)=lds.C*mu_preds(:,1);
+  % compute the covariance matrix of the next latent variable
+  U_preds(:,:,1)=lds.Gamma+lds.A*Vs(:,:,end)*lds.A';
   for i=2:N_pred
     % compute the mean of the next latent variable
     mu_preds(:,i)=lds.A*mu_preds(:,i-1);
-    % compute the most probable observation
-    X_pred(:,i)=lds.C*mu_preds(:,i);
+    % compute the covariance matrix of the next latent variable
+    U_preds(:,:,i)=lds.Gamma+lds.A*U_preds(:,:,i-1)*lds.A';
   endfor
+
+  % simulate the predictions
+  for i=1:N_pred
+    % draw a sample from the computed distribution
+    X_pred(:,i)=lds.C*mu_preds(:,i);
+  end
+
+  Z_pred=mu_preds;
 endfunction
 

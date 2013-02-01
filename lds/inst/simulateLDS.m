@@ -8,7 +8,7 @@
 % Outputs
 % X_preds - DxN_pred matrix containing the predictions x_n as column vectors for each prediction step.
 
-function [X_pred, Z_pred] = predictLDS(lds, X, N_pred)
+function [X_pred, Z_pred] = simulateLDS(lds, X, N_pred)
   % TODO check for supplied arguments
   % load the statistics package for the MV normal PDF
   pkg load statistics
@@ -46,7 +46,7 @@ function [X_pred, Z_pred] = predictLDS(lds, X, N_pred)
   % simulate the predictions
   for i=1:N_pred
     % draw a sample from the computed distribution
-    X_pred(:,i)=lds.C*mu_preds(:,i);
+    X_pred(:,i)=mvnrnd((lds.C*mu_preds(:,i))', lds.Sigma+lds.C*U_preds(:,:,i)*lds.C')';
   end
 
   Z_pred=mu_preds;
